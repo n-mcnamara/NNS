@@ -1,0 +1,6 @@
+{
+    "name": "nns-resolver-final",
+    "version": "1.0.0",
+    "scripts": { "build": "esbuild src/*.ts --bundle --outdir=. --format=esm" },
+    "devDependencies": { "esbuild": "^0.19.5", "typescript": "^5.2.2" }
+}

@@ -1,0 +1,17 @@
+{
+    "manifest_version": 3,
+    "name": "NNS Resolver",
+    "version": "1.0.0",
+    "description": "Type 'nns' + space + a name to resolve it.",
+    "permissions": ["tabs", "storage", "scripting"],
+    "host_permissions": ["http://*/*", "https://*/*"],
+    "background": { "service_worker": "background.js" },
+    "action": { "default_popup": "popup.html" },
+    "omnibox": { "keyword": "nns" },
+    "content_scripts": [
+        { "matches": ["<all_urls>"], "js": ["content.js"] }
+    ],
+    "web_accessible_resources": [
+        { "resources": ["conflict.html", "conflict.css"], "matches": ["<all_urls>"] }
+    ]
+}
