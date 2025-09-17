@@ -1,15 +1,13 @@
 document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const name = urlParams.get('name');
-    const claimants = JSON.parse(urlParams.get('claimants') || '[]');
+    const latestClaimants = JSON.parse(urlParams.get('latest') || '[]');
+    const historyData = JSON.parse(urlParams.get('history') || '{}');
     const previousChoice = urlParams.get('previousChoice');
 
     const nameElement = document.getElementById('conflict-name');
-    if (nameElement && name) {
-        nameElement.textContent = name;
-    }
+    if (nameElement && name) nameElement.textContent = name;
 
-    // Add the re-verification message if applicable
     if (previousChoice) {
         const container = document.querySelector('.container');
         const reVerificationNotice = document.createElement('div');
@@ -20,20 +18,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const listElement = document.getElementById('claimants-list');
     if (listElement) {
-        listElement.innerHTML = ''; // Clear spinner
+        listElement.innerHTML = '';
 
-        claimants.forEach((claimantEvent: any) => {
+        latestClaimants.forEach((latestEvent: any) => {
             const card = document.createElement('div');
             card.className = 'claimant-card';
-
-            // Highlight the previously trusted user
-            if (previousChoice && claimantEvent.pubkey === previousChoice) {
+            if (previousChoice && latestEvent.pubkey === previousChoice) {
                 card.classList.add('previously-trusted');
             }
+
+            const history = historyData[latestEvent.pubkey] || [latestEvent];
+            const firstEvent = history[history.length - 1];
             
             let recordsHtml = '<p class="record-info">No records found.</p>';
             try {
-                const records = JSON.parse(claimantEvent.content)?.records;
+                const records = JSON.parse(latestEvent.content)?.records;
                 if (records && Object.keys(records).length > 0) {
                     recordsHtml = Object.entries(records).map(([key, value]) => `
                         <div class="record-item">
@@ -44,8 +43,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (e) {}
 
-            const claimDate = new Date(claimantEvent.created_at * 1000);
-            const dateString = claimDate.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+            const firstDate = new Date(firstEvent.created_at * 1000).toLocaleDateString();
+            const latestDate = new Date(latestEvent.created_at * 1000).toLocaleDateString();
 
             card.innerHTML = `
                 <div class="claimant-info">
@@ -53,23 +52,35 @@ document.addEventListener('DOMContentLoaded', () => {
                         <img class="profile-pic-placeholder" src="" alt="">
                         <div>
                             <p class="profile-name">Loading profile...</p>
-                            <p class="profile-npub"><code>${claimantEvent.pubkey.substring(0, 24)}...</code></p>
+                            <p class="profile-npub"><code>${latestEvent.pubkey}</code></p>
                         </div>
                     </div>
-                    <div class="records-section">
-                        ${recordsHtml}
-                    </div>
+                    <div class="records-section">${recordsHtml}</div>
                     <div class="meta-section">
-                        <p><strong>Claimed on:</strong> ${dateString}</p>
+                        <p><strong>First seen:</strong> ${firstDate}</p>
+                        <p><strong>Last update:</strong> ${latestDate}</p>
+                        <p class="wot-score"><strong>Web of Trust:</strong> <span>Checking...</span></p>
+                        <details class="history-details">
+                            <summary>Show ${history.length} record(s)</summary>
+                            <div class="history-timeline">
+                                ${history.map((event: any) => `
+                                    <div class="history-item">
+                                        <strong>${new Date(event.created_at * 1000).toLocaleString()}:</strong>
+                                        <pre>${JSON.stringify(JSON.parse(event.content).records, null, 2)}</pre>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </details>
                     </div>
                 </div>
                 <div class="action-section">
-                    <button class="trust-button" data-pubkey="${claimantEvent.pubkey}">Trust this one</button>
+                    <button class="trust-button" data-pubkey="${latestEvent.pubkey}">Trust this one</button>
                 </div>
             `;
             listElement.appendChild(card);
 
-            chrome.runtime.sendMessage({ type: 'NNS_FETCH_PROFILE', pubkey: claimantEvent.pubkey }, response => {
+            // Fetch Profile
+            chrome.runtime.sendMessage({ type: 'NNS_FETCH_PROFILE', pubkey: latestEvent.pubkey }, response => {
                 if (response?.event) {
                     try {
                         const profile = JSON.parse(response.event.content);
@@ -81,27 +92,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
+            // Fetch WoT Score
+            chrome.runtime.sendMessage({ type: 'NNS_FETCH_WOT_SCORE', claimantPubkey: latestEvent.pubkey }, response => {
+                const wotScoreElement = card.querySelector('.wot-score span');
+                if (wotScoreElement) {
+                    if (response?.score !== null && response?.score !== undefined) {
+                        wotScoreElement.textContent = `${response.score} of your contacts follow this user.`;
+                    } else {
+                        wotScoreElement.textContent = 'Could not determine. (Set your pubkey in popup)';
+                    }
+                }
+            });
+
             card.querySelector('.trust-button')?.addEventListener('click', () => {
-                handleTrustChoice(name, claimantEvent);
+                handleTrustChoice(name, latestEvent);
             });
         });
         
         const footer = document.createElement('p');
         footer.className = 'footer-note';
-        footer.textContent = 'Your choice will be remembered for this name. You can clear your choices from the extension popup menu.';
+        footer.textContent = 'Your choice will be remembered. You can clear choices from the extension popup.';
         listElement.insertAdjacentElement('afterend', footer);
     }
 });
 
 function handleTrustChoice(name: string | null, chosenEvent: any) {
     if (!name) return;
-
-    const choice = {
-        pubkey: chosenEvent.pubkey,
-        eventId: chosenEvent.id
-    };
-    const storageKey = `nns_choice_${name}`;
-
+    const choice = { pubkey: chosenEvent.pubkey, eventId: chosenEvent.id };
     chrome.runtime.sendMessage({ type: 'NNS_SAVE_CHOICE', name: name, choice: choice }, (response) => {
         if (response?.success) {
             const httpUrl = JSON.parse(chosenEvent.content)?.records?.http;

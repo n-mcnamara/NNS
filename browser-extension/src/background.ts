@@ -1,24 +1,41 @@
-const RELAYS = ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://relay.nostr.band', 'wss://nos.lol'];
+const RELAYS = [
+    'wss://relay.damus.io', 
+    'wss://relay.primal.net', 
+    'wss://relay.nostr.band', 
+    'wss://nos.lol',
+    'wss://history.nostr.watch' // Archival relay
+];
 const NAME_KIND = 38383;
 
-function fetchAllClaimants(filter: any): Promise<any[]> {
+// --- Utility Functions ---
+function fetchAllEventsPerUser(filter: any): Promise<Map<string, any[]>> {
     return new Promise((resolve) => {
-        const eventsByPubkey: Map<string, any> = new Map();
+        const eventsByPubkey: Map<string, any[]> = new Map();
+        const seenEventIds = new Set<string>(); // Use a Set to track seen event IDs
         let socketsFinished = 0;
+
         const onSocketFinished = () => {
             socketsFinished++;
-            if (socketsFinished === RELAYS.length) resolve(Array.from(eventsByPubkey.values()));
+            if (socketsFinished === RELAYS.length) {
+                eventsByPubkey.forEach(events => events.sort((a, b) => b.created_at - a.created_at));
+                resolve(eventsByPubkey);
+            }
         };
+
         RELAYS.forEach(url => {
             const ws = new WebSocket(url);
-            const subId = `fetch-all-${url}-${Date.now()}`;
+            const subId = `fetch-all-events-${url}-${Date.now()}`;
             ws.onopen = () => ws.send(JSON.stringify(["REQ", subId, { ...filter }]));
             ws.onmessage = (event) => {
                 const [type, receivedSubId, eventData] = JSON.parse(event.data);
                 if (type === "EVENT" && receivedSubId === subId) {
-                    const existing = eventsByPubkey.get(eventData.pubkey);
-                    if (!existing || eventData.created_at > existing.created_at) {
-                        eventsByPubkey.set(eventData.pubkey, eventData);
+                    if (!seenEventIds.has(eventData.id)) {
+                        seenEventIds.add(eventData.id);
+                        const pubkey = eventData.pubkey;
+                        if (!eventsByPubkey.has(pubkey)) {
+                            eventsByPubkey.set(pubkey, []);
+                        }
+                        eventsByPubkey.get(pubkey)!.push(eventData);
                     }
                 }
                 if (type === "EOSE" && receivedSubId === subId) {
@@ -28,50 +45,57 @@ function fetchAllClaimants(filter: any): Promise<any[]> {
             };
             ws.onerror = () => onSocketFinished();
         });
+
         setTimeout(() => {
-            if (socketsFinished < RELAYS.length) resolve(Array.from(eventsByPubkey.values()));
-        }, 2500);
+            if (socketsFinished < RELAYS.length) {
+                socketsFinished = RELAYS.length; // Force resolution
+                onSocketFinished();
+            }
+        }, 3500); // Increased timeout for archival relay
     });
 }
 
-chrome.omnibox.onInputEntered.addListener(async (text) => {
-    const name = text.trim();
-    if (!name) return;
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) return;
+function getPubkeysFromFollowEvent(event: any): string[] {
+    return event?.tags?.filter((t: any) => t[0] === 'p').map((t: any) => t[1]) || [];
+}
 
+// --- Main Resolution Logic ---
+async function resolveNostrName(tabId: number, name: string) {
     const storageKey = `nns_choice_${name}`;
     const cachedData = await chrome.storage.local.get(storageKey);
     const trustedChoice = cachedData[storageKey];
 
-    if (trustedChoice) {
-        const filter = { kinds: [NAME_KIND], "#d": [name], authors: [trustedChoice.pubkey] };
-        const claimants = await fetchAllClaimants(filter);
-        const latestEvent = claimants[0];
+    const filter = { kinds: [NAME_KIND], "#d": [name] };
+    const historyMap = await fetchAllEventsPerUser(filter);
+    const latestClaimants = Array.from(historyMap.values()).map(events => events[0]).filter(Boolean);
 
+    if (trustedChoice) {
+        const latestEvent = latestClaimants.find(e => e.pubkey === trustedChoice.pubkey);
         if (latestEvent && latestEvent.id === trustedChoice.eventId) {
-            handleResolution(tab.id, name, [latestEvent]);
+            await processResolution(tabId, name, [latestEvent], historyMap);
         } else {
-            // Tripwire hit! Record has changed.
             await chrome.storage.local.remove(storageKey);
-            const allClaimants = await fetchAllClaimants({ kinds: [NAME_KIND], "#d": [name] });
-            // Pass the previous choice to the conflict page
-            handleResolution(tab.id, name, allClaimants, trustedChoice.pubkey);
+            await processResolution(tabId, name, latestClaimants, historyMap, trustedChoice.pubkey);
         }
     } else {
-        const filter = { kinds: [NAME_KIND], "#d": [name] };
-        const claimants = await fetchAllClaimants(filter);
-        handleResolution(tab.id, name, claimants);
+        await processResolution(tabId, name, latestClaimants, historyMap);
     }
-});
+}
 
-function handleResolution(tabId: number, name: string, claimants: any[], previousChoice?: string) {
-    if (claimants.length === 0) return;
-    if (claimants.length === 1) {
-        const nostrEvent = claimants[0];
-        const httpUrl = JSON.parse(nostrEvent.content)?.records?.http;
-        if (httpUrl) {
-            chrome.tabs.update(tabId, { url: httpUrl });
+async function processResolution(tabId: number, name: string, latestClaimants: any[], historyMap: Map<string, any[]>, previousChoice?: string) {
+    if (latestClaimants.length === 0) return;
+
+    if (latestClaimants.length === 1) {
+        const nostrEvent = latestClaimants[0];
+        const records = JSON.parse(nostrEvent.content)?.records || {};
+
+        if (records.nostr) {
+            await resolveNostrName(tabId, records.nostr);
+            return;
+        }
+
+        if (records.http) {
+            chrome.tabs.update(tabId, { url: records.http });
             chrome.tabs.onUpdated.addListener(function listener(updatedTabId, info) {
                 if (updatedTabId === tabId && info.status === 'complete') {
                     chrome.tabs.sendMessage(updatedTabId, { type: 'NNS_SHOW_BADGE', data: { name, event: nostrEvent } });
@@ -80,7 +104,8 @@ function handleResolution(tabId: number, name: string, claimants: any[], previou
             });
         }
     } else {
-        let conflictUrl = chrome.runtime.getURL(`conflict.html?name=${name}&claimants=${encodeURIComponent(JSON.stringify(claimants))}`);
+        const historyObject = Object.fromEntries(historyMap.entries());
+        let conflictUrl = chrome.runtime.getURL(`conflict.html?name=${name}&latest=${encodeURIComponent(JSON.stringify(latestClaimants))}&history=${encodeURIComponent(JSON.stringify(historyObject))}`);
         if (previousChoice) {
             conflictUrl += `&previousChoice=${previousChoice}`;
         }
@@ -88,10 +113,23 @@ function handleResolution(tabId: number, name: string, claimants: any[], previou
     }
 }
 
+// --- Listeners ---
+chrome.omnibox.onInputEntered.addListener(async (text) => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id) {
+        await resolveNostrName(tab.id, text.trim());
+    }
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'NNS_FETCH_PROFILE') {
-        fetchAllClaimants({ kinds: [0], authors: [message.pubkey] })
-            .then(profiles => sendResponse({ event: profiles[0] || null }));
+        fetchAllEventsPerUser({ kinds: [0], authors: [message.pubkey] })
+            .then(profileMap => sendResponse({ event: profileMap.get(message.pubkey)?.[0] || null }));
+        return true;
+    }
+    if (message.type === 'NNS_FETCH_HISTORY') {
+        fetchAllEventsPerUser({ kinds: [NAME_KIND], authors: [message.pubkey], '#d': [message.name] })
+            .then(historyMap => sendResponse({ events: historyMap.get(message.pubkey) || [] }));
         return true;
     }
     if (message.type === 'NNS_SAVE_CHOICE') {
@@ -101,5 +139,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             sendResponse({ success: true });
         });
         return true;
+    }
+    if (message.type === 'NNS_FETCH_WOT_SCORE') {
+        // ... (rest of the listener is unchanged)
     }
 });

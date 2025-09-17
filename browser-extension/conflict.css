@@ -87,6 +87,37 @@ h1 { color: #ffc107; }
     color: #aaa;
 }
 
+.meta-section p {
+    margin: 0.5rem 0;
+}
+
+.wot-score span {
+    color: #007bff;
+    font-weight: bold;
+}
+
+.history-details summary {
+    cursor: pointer;
+    color: #ffc107;
+    margin-top: 0.5rem;
+}
+.history-timeline {
+    margin-top: 1rem;
+    padding-left: 1rem;
+    border-left: 2px solid #555;
+}
+.history-item {
+    margin-bottom: 1rem;
+}
+.history-item pre {
+    background-color: #333;
+    padding: 0.5rem;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-size: 0.85em;
+}
+
 .action-section {
     display: flex;
     flex-direction: column;

@@ -1,1 +1,25 @@
-<!DOCTYPE html><html><head><link rel="stylesheet" href="popup.css"></head><body><h1>NNS Resolver</h1><button id="clear-cache-button">Clear Saved Choices</button><p id="status-message"></p><script src="popup.js"></script></body></html>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NNS Settings</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <h1>NNS Resolver</h1>
+        
+        <div class="form-group">
+            <label for="pubkey-input">Your Nostr Pubkey (or npub)</label>
+            <input type="text" id="pubkey-input" placeholder="npub1...">
+            <button id="save-pubkey-button">Save</button>
+            <p id="pubkey-status" class="status-message"></p>
+        </div>
+
+        <hr>
+
+        <button id="clear-cache-button">Clear All Saved Choices</button>
+        <p id="cache-status" class="status-message"></p>
+    </div>
+    <script src="popup.js"></script>
+</body>
+</html>

@@ -6,7 +6,13 @@ import RelayManager from './components/RelayManager';
 import type { Relay } from './components/RelayManager';
 
 const NAME_KIND = 38383 as NDKKind;
-const defaultRelays = ['wss://relay.damus.io', 'wss://relay.nostr.band', 'wss://nos.lol', 'wss://purplepag.es'];
+const defaultRelays = [
+    'wss://relay.damus.io', 
+    'wss://relay.nostr.band', 
+    'wss://nos.lol', 
+    'wss://purplepag.es',
+    'wss://history.nostr.watch' // Archival relay
+];
 
 // --- Helper Functions ---
 const checkRelayStatus = (url: string): Promise<Relay> => {
@@ -21,7 +27,7 @@ const checkRelayStatus = (url: string): Promise<Relay> => {
 // --- Helper Components ---
 const NameAvailability = ({ isChecking, owners, connectedRelays, finalName }: { isChecking: boolean, owners: NDKUser[], connectedRelays: number, finalName: string }) => {
     if (isChecking) return <p className="status-checking">Checking availability on {connectedRelays} relays...</p>;
-    if (finalName.length < 3) return null; // Don't show any message until user has typed enough
+    if (finalName.length < 3) return null;
 
     if (owners.length > 0) {
         return (
