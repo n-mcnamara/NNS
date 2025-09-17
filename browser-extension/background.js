@@ -54,7 +54,7 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
     } else {
       await chrome.storage.local.remove(storageKey);
       const allClaimants = await fetchAllClaimants({ kinds: [NAME_KIND], "#d": [name] });
-      handleResolution(tab.id, name, allClaimants);
+      handleResolution(tab.id, name, allClaimants, trustedChoice.pubkey);
     }
   } else {
     const filter = { kinds: [NAME_KIND], "#d": [name] };
@@ -62,7 +62,7 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
     handleResolution(tab.id, name, claimants);
   }
 });
-function handleResolution(tabId, name, claimants) {
+function handleResolution(tabId, name, claimants, previousChoice) {
   if (claimants.length === 0)
     return;
   if (claimants.length === 1) {
@@ -78,7 +78,10 @@ function handleResolution(tabId, name, claimants) {
       });
     }
   } else {
-    const conflictUrl = chrome.runtime.getURL(`conflict.html?name=${name}&claimants=${encodeURIComponent(JSON.stringify(claimants))}`);
+    let conflictUrl = chrome.runtime.getURL(`conflict.html?name=${name}&claimants=${encodeURIComponent(JSON.stringify(claimants))}`);
+    if (previousChoice) {
+      conflictUrl += `&previousChoice=${previousChoice}`;
+    }
     chrome.tabs.update(tabId, { url: conflictUrl });
   }
 }

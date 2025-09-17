@@ -52,9 +52,11 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
         if (latestEvent && latestEvent.id === trustedChoice.eventId) {
             handleResolution(tab.id, name, [latestEvent]);
         } else {
+            // Tripwire hit! Record has changed.
             await chrome.storage.local.remove(storageKey);
             const allClaimants = await fetchAllClaimants({ kinds: [NAME_KIND], "#d": [name] });
-            handleResolution(tab.id, name, allClaimants);
+            // Pass the previous choice to the conflict page
+            handleResolution(tab.id, name, allClaimants, trustedChoice.pubkey);
         }
     } else {
         const filter = { kinds: [NAME_KIND], "#d": [name] };
@@ -63,7 +65,7 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
     }
 });
 
-function handleResolution(tabId: number, name: string, claimants: any[]) {
+function handleResolution(tabId: number, name: string, claimants: any[], previousChoice?: string) {
     if (claimants.length === 0) return;
     if (claimants.length === 1) {
         const nostrEvent = claimants[0];
@@ -78,7 +80,10 @@ function handleResolution(tabId: number, name: string, claimants: any[]) {
             });
         }
     } else {
-        const conflictUrl = chrome.runtime.getURL(`conflict.html?name=${name}&claimants=${encodeURIComponent(JSON.stringify(claimants))}`);
+        let conflictUrl = chrome.runtime.getURL(`conflict.html?name=${name}&claimants=${encodeURIComponent(JSON.stringify(claimants))}`);
+        if (previousChoice) {
+            conflictUrl += `&previousChoice=${previousChoice}`;
+        }
         chrome.tabs.update(tabId, { url: conflictUrl });
     }
 }

@@ -3,10 +3,24 @@ body {
     background-color: #121212;
     color: #e0e0e0;
     margin: 0;
-    padding: 2rem;
+    overflow-x: hidden;
 }
 
-#root { max-width: 700px; margin: 0 auto; }
+/* No flexbox needed here, just a simple container */
+.app-container {
+    width: 100%;
+}
+
+.main-content {
+    padding: 2rem;
+    max-width: 700px;
+    margin: 0 auto; /* This will now correctly center the content */
+    width: 100%;
+    box-sizing: border-box; /* Ensure padding doesn't break centering */
+}
+
+#root { max-width: none; margin: 0; }
+
 h1, h2, h3 { color: #f5f5f5; border-bottom: 1px solid #444; padding-bottom: 0.5rem; }
 .subtitle { color: #aaa; margin-top: -1rem; }
 .container-vertical { display: flex; flex-direction: column; gap: 2rem; }
@@ -31,8 +45,11 @@ input, select {
 }
 
 .header { text-align: center; margin-bottom: 2rem; }
-.connect-button { background-color: #28a745; width: auto; }
-.connect-button:hover { background-color: #218838; }
+.header-controls { display: flex; justify-content: center; align-items: center; gap: 1rem; }
+.connect-button, .manage-relays-btn { width: auto; }
+.manage-relays-btn { background-color: #6c757d; }
+.manage-relays-btn:hover { background-color: #5a6268; }
+
 
 .name-input-group { display: flex; gap: 5px; }
 .name-input-group input { flex-grow: 1; }
@@ -49,28 +66,22 @@ input, select {
 .profile-card p { margin: 0; color: #ccc; }
 .profile-card code { font-size: 0.8em; color: #999; }
 
-/* Your Names List */
-.name-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
+.name-list { list-style: none; padding: 0; margin: 0; }
+.name-list li { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #333; }
+.name-list li:last-child { border-bottom: none; }
+.edit-button { width: auto; padding: 5px 15px; font-size: 0.9em; background-color: #555; }
+.edit-button:hover { background-color: #777; }
+
+.sidebar-wrapper {
+    width: 300px;
+    position: fixed;
+    right: 0;
+    top: 0;
+    height: 100%;
+    transition: transform 0.3s ease-in-out;
+    transform: translateX(100%); /* Start closed */
+    z-index: 1000;
 }
-.name-list li {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 10px;
-    border-bottom: 1px solid #333;
-}
-.name-list li:last-child {
-    border-bottom: none;
-}
-.edit-button {
-    width: auto;
-    padding: 5px 15px;
-    font-size: 0.9em;
-    background-color: #555;
-}
-.edit-button:hover {
-    background-color: #777;
+.sidebar-wrapper.open {
+    transform: translateX(0);
 }
